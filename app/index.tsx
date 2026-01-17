@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Asset } from 'expo-asset';
 import { CameraType, CameraView, useCameraPermissions } from 'expo-camera';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { DeviceMotion } from 'expo-sensors';
@@ -11,8 +12,29 @@ export default function CameraScreen() {
   const [zoom, setZoom] = useState(0);
   const [stabilityScore, setStabilityScore] = useState(1);
   const [permission, requestPermission] = useCameraPermissions();
+  const [htmlContent, setHtmlContent] = useState<string | null>(null);
   const cameraRef = useRef<CameraView>(null);
   const webViewRef = useRef<WebView>(null);
+
+  // Carrega o arquivo HTML
+  useEffect(() => {
+    async function loadHtml() {
+      try {
+        const asset = Asset.fromModule(require('./index.html'));
+        await asset.downloadAsync();
+        
+        // Usa fetch para ler o conteúdo do arquivo
+        const response = await fetch(asset.localUri!);
+        const html = await response.text();
+        
+        setHtmlContent(html);
+        console.log('✅ HTML carregado com sucesso');
+      } catch (error) {
+        console.error('❌ Erro ao carregar HTML:', error);
+      }
+    }
+    loadHtml();
+  }, []);
 
   // Habilita todas as orientações
   useEffect(() => {
@@ -170,26 +192,13 @@ export default function CameraScreen() {
           try {
             const profilesJson = await AsyncStorage.getItem('airsoftProfiles');
             const profiles = profilesJson ? JSON.parse(profilesJson) : [];
-            
-            // Recebe o perfil completo do HTML
             const newProfile = data.profile || data;
-            
-            // Valida se tem nome
-            if (!newProfile.name) {
-              console.log('⚠️ Salvamento cancelado - sem nome de perfil');
-              Alert.alert('❌ Erro', 'Digite um nome para o perfil');
-              break;
-            }
-            
-            // Salva o perfil completo com todas as propriedades
+            if (!newProfile.name) break;
             profiles.push(newProfile);
             await AsyncStorage.setItem('airsoftProfiles', JSON.stringify(profiles));
-            Alert.alert('✅ Sucesso', `Perfil "${newProfile.name}" salvo!`);
-            console.log('✅ Perfil salvo:', newProfile);
-          } catch (error) {
-            Alert.alert('❌ Erro', 'Falha ao salvar perfil');
-            console.error('Erro ao salvar perfil:', error);
-          }
+            // Envia a lista atualizada para o WebView
+            webViewRef.current?.injectJavaScript(`window.receiveProfiles && window.receiveProfiles(${JSON.stringify(profiles)});`);
+          } catch (error) {}
           break;
 
         case 'loadProfile':
@@ -224,21 +233,9 @@ export default function CameraScreen() {
             profiles = profiles.filter((p: any) => p.id !== data.id);
             console.log('📋 Perfis após deletar:', profiles.length);
             await AsyncStorage.setItem('airsoftProfiles', JSON.stringify(profiles));
-            console.log('� Perfis salvos no AsyncStorage');
-            
-            // Retorna a lista atualizada para o HTML
-            webViewRef.current?.injectJavaScript(`
-              console.log('🔄 Atualizando lista de perfis após exclusão...');
-              if (window.receiveProfiles) {
-                window.receiveProfiles(${JSON.stringify(profiles)});
-              } else {
-                console.error('❌ window.receiveProfiles não existe!');
-              }
-            `);
-            console.log('✅ Lista de perfis atualizada no WebView');
-          } catch (error) {
-            console.error('Erro ao deletar perfil:', error);
-          }
+            // Envia a lista atualizada para o WebView
+            webViewRef.current?.injectJavaScript(`window.receiveProfiles && window.receiveProfiles(${JSON.stringify(profiles)});`);
+          } catch (error) {}
           break;
 
         case 'saveAllProfiles':
@@ -252,19 +249,6 @@ export default function CameraScreen() {
 
         case 'takePhoto':
           console.log('📷 Captura de foto solicitada');
-          try {
-            if (cameraRef.current) {
-              const photo = await cameraRef.current.takePictureAsync({
-                quality: 0.9,
-                base64: false,
-              });
-              console.log('✅ Foto capturada:', photo.uri);
-              Alert.alert('📷 Foto Capturada!', `Salva em: ${photo.uri.split('/').pop()}`);
-            }
-          } catch (error) {
-            console.error('❌ Erro ao capturar foto:', error);
-            Alert.alert('❌ Erro', 'Falha ao capturar foto');
-          }
           break;
 
         case 'saveState':
@@ -300,6 +284,32 @@ export default function CameraScreen() {
         case 'ready':
         case 'webview_ready':
           console.log('✅ WebView pronto:', data.message || 'Carregado');
+          try {
+            const profilesJson = await AsyncStorage.getItem('airsoftProfiles');
+            const profiles = profilesJson ? JSON.parse(profilesJson) : [];
+            console.log('📋 Perfis no AsyncStorage:', profiles.length);
+            
+            // Aguarda um pouco para garantir que o HTML está pronto
+            setTimeout(() => {
+              const jsCode = `
+                try {
+                  console.log('⏱️ Executando receiveProfiles com', ${profiles.length}, 'perfis');
+                  if (typeof window.receiveProfiles === 'function') {
+                    window.receiveProfiles(${JSON.stringify(profiles)});
+                  } else {
+                    console.error('❌ window.receiveProfiles não é uma função');
+                  }
+                } catch(e) {
+                  console.error('❌ Erro ao chamar receiveProfiles:', e);
+                }
+                true;
+              `;
+              webViewRef.current?.injectJavaScript(jsCode);
+              console.log('📤 Perfis injetados no WebView');
+            }, 500);
+          } catch (error) {
+            console.error('Erro ao enviar perfis após webview_ready:', error);
+          }
           break;
 
         case 'dpad':
@@ -309,7 +319,6 @@ export default function CameraScreen() {
         case 'calibrate':
         case 'tare':
           console.log('🎯 Calibração/Tara solicitada');
-          Alert.alert('Calibração', 'Mantenha o dispositivo estável...');
           break;
 
         default:
@@ -320,8 +329,14 @@ export default function CameraScreen() {
     }
   };
 
-  // Lê o arquivo HTML original completo
-  const htmlSource = require('./index.html');
+  // Se o HTML ainda não foi carregado, mostra loading
+  if (!htmlContent) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.text}>Carregando interface...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -342,7 +357,7 @@ export default function CameraScreen() {
         {/* WebView com HTML transparente sobreposto */}
         <WebView
           ref={webViewRef}
-          source={htmlSource}
+          source={{ html: htmlContent }}
           style={styles.webviewOverlay}
           javaScriptEnabled={true}
           domStorageEnabled={true}
@@ -359,25 +374,6 @@ export default function CameraScreen() {
             document.documentElement.style.background = 'transparent';
             true;
           `}
-          onLoad={async () => {
-            // Auto-load do último estado salvo
-            try {
-              const stateJson = await AsyncStorage.getItem('airsoftState');
-              const state = stateJson ? JSON.parse(stateJson) : null;
-              if (state) {
-                setTimeout(() => {
-                  webViewRef.current?.injectJavaScript(`
-                    if (window.applyState) {
-                      window.applyState(${JSON.stringify(state)});
-                    }
-                  `);
-                  console.log('🚀 Estado inicial restaurado');
-                }, 500); // Aguarda 500ms para garantir que o HTML carregou
-              }
-            } catch (e) {
-              console.error('❌ Erro ao carregar estado inicial:', e);
-            }
-          }}
         />
       </View>
     </View>

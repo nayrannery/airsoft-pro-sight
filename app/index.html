@@ -152,8 +152,22 @@
             background: #0f0;
             color: #000;
         }
-
-        /* Sliders - ZOOM VERTICAL NA ESQUERDA - COMPACTO */
+        .btn-secondary {
+            border-color: #f80;
+            color: #ff9900;
+            background: rgba(80, 40, 0, 0.8);
+        }
+        .btn-secondary:active {
+            background: #ff9900;
+            color: #000;
+        }
+        
+        /* Botão pequeno para painéis */
+        .btn-small {
+            padding: 6px 10px;
+            font-size: 11px;
+            margin: 0;
+        }
         #zoom-control-vertical {
             position: fixed;
             left: 10px;
@@ -223,7 +237,7 @@
             gap: 8px;
             pointer-events: auto;
             background: rgba(0, 0, 0, 0.7);
-            padding: 10px;
+            padding: 10px 10px;
             border-radius: 12px;
             border: 1px solid rgba(0, 255, 0, 0.3);
             z-index: 100;
@@ -599,6 +613,7 @@
                     <span id="stab-yellow" class="stab-light"></span>
                     <span id="stab-green" class="stab-light"></span>
                 </div>
+                <button class="btn btn-small" onclick="Sensors.tare()" title="Zerar/Tara - Reset do ponto inicial" style="margin-top:8px; width:100%; font-size:11px;">⨁ Tara</button>
             </div>
         </div>
     </div>
@@ -644,7 +659,7 @@
                 <input type="text" id="profile-name" placeholder="Ex: 10 metros, M4A1, Sniper..." maxlength="30">
             </div>
             <div style="margin-top:20px; display: flex; gap: 10px; padding-bottom: 20px;">
-                <button class="btn btn-danger" style="flex:1" onclick="UI.toggleSaveModal()">✕ Cancelar</button>
+                <button class="btn btn-secondary" style="flex:1" onclick="UI.toggleSaveModal()">✕ Cancelar</button>
                 <button class="btn btn-success" style="flex:1" onclick="Profiles.saveCurrent()">✓ Salvar</button>
             </div>
         </div>
@@ -656,7 +671,7 @@
             <h2>📂 Perfis Salvos</h2>
             <div id="profile-list" style="max-height: 55vh; overflow-y: auto; margin: 15px 0; padding: 5px;"></div>
             <div style="margin-top:15px; text-align:center;">
-                <button class="btn btn-danger" onclick="UI.toggleLoadModal()" style="min-width: 120px;">✕ Fechar</button>
+                <button class="btn btn-secondary" onclick="UI.toggleLoadModal()" style="min-width: 120px;">✕ Fechar</button>
             </div>
         </div>
     </div>
@@ -667,8 +682,8 @@
             <h2>⚠️ Confirmar Exclusão</h2>
             <p id="confirm-message" style="color: #0f0; text-align: center; margin: 20px 0; font-size: 15px;"></p>
             <div style="margin-top:20px; display: flex; gap: 10px;">
-                <button class="btn btn-success" style="flex:1" onclick="UI.confirmDelete()">✓ Excluir</button>
-                <button class="btn btn-danger" style="flex:1" onclick="UI.cancelDelete()">✕ Cancelar</button>
+                <button class="btn btn-danger" style="flex:1" onclick="UI.confirmDelete()">🗑️ Excluir</button>
+                <button class="btn btn-secondary" style="flex:1" onclick="UI.cancelDelete()">✕ Cancelar</button>
             </div>
         </div>
     </div>
@@ -761,16 +776,20 @@ const Sensors = {
         const lights = El.stabLights;
         Object.values(lights).forEach(l => l.style.background = '#333'); // Apaga todas
         
-        // Define qual luz acender baseado no Score (quanto menor, mais estável)
+        // Define qual luz acender e cor da bolha do nível baseado no Score (quanto menor, mais estável)
         // Dificuldade moderada
         if (score < 4) {
             lights.g.style.background = '#0f0'; // Verde - Muito estável
+            if (El.levelBubble) El.levelBubble.style.background = '#0f0'; // Verde na bolha
         } else if (score < 10) {
             lights.y.style.background = 'yellow'; // Amarelo - Estável
+            if (El.levelBubble) El.levelBubble.style.background = 'yellow'; // Amarelo na bolha
         } else if (score < 20) {
             lights.o.style.background = 'orange'; // Laranja - Instável
+            if (El.levelBubble) El.levelBubble.style.background = 'orange'; // Laranja na bolha
         } else {
             lights.r.style.background = 'red'; // Vermelho - Muito instável
+            if (El.levelBubble) El.levelBubble.style.background = 'red'; // Vermelho na bolha
         }
     }
 };
@@ -1092,15 +1111,12 @@ window.Calibration = {
 window.Profiles = {
     storageKey: 'airsoft_pro_profiles',
     
-    // Carrega do localStorage
+    // Carrega do cache global, não do localStorage
     loadFromStorage() {
-        try {
-            const stored = localStorage.getItem(this.storageKey);
-            return stored ? JSON.parse(stored) : [];
-        } catch(e) {
-            console.error('❌ Erro ao carregar perfis do localStorage:', e);
-            return [];
+        if (window._profilesCache && Array.isArray(window._profilesCache)) {
+            return window._profilesCache;
         }
+        return [];
     },
     
     // Salva no localStorage
@@ -1108,6 +1124,8 @@ window.Profiles = {
         try {
             localStorage.setItem(this.storageKey, JSON.stringify(profiles));
             console.log('💾 Perfis salvos no localStorage:', profiles.length);
+            const verify = localStorage.getItem(this.storageKey);
+            console.log('✅ Verificação localStorage:', !!verify);
         } catch(e) {
             console.error('❌ Erro ao salvar perfis no localStorage:', e);
         }
@@ -1147,6 +1165,14 @@ window.Profiles = {
         let profiles = this.getAll();
         profiles.push(profile);
         this.saveToStorage(profiles);
+        
+        // Envia para React Native também (para AsyncStorage)
+        if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'saveAllProfiles',
+                profiles: profiles
+            }));
+        }
         
         // Limpa o input e fecha o modal
         El.profileName.value = '';
@@ -1224,14 +1250,31 @@ window.Profiles = {
         
         console.log('🎨 Renderizando lista de perfis. Total:', profiles.length);
         
-        if (profiles.length === 0) {
-            El.profileList.innerHTML = '<p style="text-align: center; color: #888; padding: 30px; font-size: 14px;">📭 Nenhum perfil salvo ainda</p>';
+        // Garante que temos o elemento
+        let profileList = El.profileList;
+        if (!profileList) {
+            profileList = document.getElementById('profile-list');
+            console.log('🔄 Buscando profile-list do DOM novamente:', !!profileList);
+        }
+        
+        if (!profileList) {
+            console.error('❌ Elemento profile-list não encontrado no DOM!');
+            console.log('📋 Elementos disponíveis no documento:');
+            console.log('- save-modal:', !!document.getElementById('save-modal'));
+            console.log('- load-modal:', !!document.getElementById('load-modal'));
+            console.log('- profile-list:', !!document.getElementById('profile-list'));
             return;
         }
         
-        console.log('📋 Perfis:', profiles.map(p => `${p.name}:${p.id}`));
+        if (profiles.length === 0) {
+            profileList.innerHTML = '<p style="text-align: center; color: #888; padding: 30px; font-size: 14px;">📭 Nenhum perfil salvo ainda</p>';
+            console.log('📭 Lista vazia renderizada');
+            return;
+        }
         
-        El.profileList.innerHTML = profiles.map(p => 
+        console.log('📋 Perfis para renderizar:', profiles.map(p => ({name: p.name, id: p.id})));
+        
+        const html = profiles.map(p => 
             `<div class="profile-list-item">
                 <span style="font-weight: 500;">📌 ${p.name}</span>
                 <div style="display: flex; gap: 5px;">
@@ -1241,7 +1284,8 @@ window.Profiles = {
             </div>`
         ).join('');
         
-        console.log('✅ Lista renderizada');
+        profileList.innerHTML = html;
+        console.log('✅ Lista renderizada com', profiles.length, 'perfis');
     }
 };
 
@@ -1300,11 +1344,13 @@ window.UI = {
     toggleLoadModal() { 
         const isOpening = !El.loadModal.classList.contains('active');
         El.loadModal.classList.toggle('active'); 
-        
         if(isOpening) {
-            console.log('📂 Abrindo modal de carregar...');
-            // Carrega e renderiza perfis do localStorage
-            Profiles.render();
+            // Não renderiza do localStorage, espera receiveProfiles
+            if (window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'loadProfiles'
+                }));
+            }
         }
     },
     
@@ -1319,7 +1365,18 @@ window.UI = {
         let profiles = Profiles.getAll();
         profiles = profiles.filter(p => p.id !== this.pendingDeleteId);
         
+        // Atualiza o cache global imediatamente
+        window._profilesCache = profiles;
+        
         Profiles.saveToStorage(profiles);
+        
+        // Envia para React Native também
+        if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'saveAllProfiles',
+                profiles: profiles
+            }));
+        }
         
         const name = this.pendingDeleteName;
         console.log(`🗑️ Perfil "${name}" excluído. Restam ${profiles.length} perfis.`);
@@ -1331,7 +1388,7 @@ window.UI = {
         // Fecha modal de confirmação
         El.confirmModal.classList.remove('active');
         
-        // Atualiza a lista visual
+        // Atualiza a lista visual imediatamente
         Profiles.render();
         
         // Mostra notificação
@@ -1432,6 +1489,15 @@ if (screen.orientation) {
         setTimeout(handleOrientationChange, 200);
     });
 }
+
+// Cache global dos perfis recebidos do React Native
+window._profilesCache = [];
+
+window.receiveProfiles = function(profiles) {
+    if (!Array.isArray(profiles)) profiles = [];
+    window._profilesCache = profiles;
+    if (window.Profiles && window.Profiles.render) window.Profiles.render();
+};
 </script>
 </body>
 </html>

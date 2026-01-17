@@ -1,9 +1,9 @@
-import { StyleSheet, View, Text, TouchableOpacity, Alert, StatusBar } from 'react-native';
-import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
-import { WebView, WebViewMessageEvent } from 'react-native-webview';
-import { useState, useRef, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { CameraType, CameraView, useCameraPermissions } from 'expo-camera';
 import { DeviceMotion } from 'expo-sensors';
+import { useEffect, useRef, useState } from 'react';
+import { Alert, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { WebView, WebViewMessageEvent } from 'react-native-webview';
 
 export default function HomeScreen() {
   const [facing, setFacing] = useState<CameraType>('back');
@@ -176,19 +176,6 @@ export default function HomeScreen() {
 
         case 'takePhoto':
           console.log('📷 Captura de foto solicitada');
-          try {
-            if (cameraRef.current) {
-              const photo = await cameraRef.current.takePictureAsync({
-                quality: 0.9,
-                base64: false,
-              });
-              console.log('✅ Foto capturada:', photo.uri);
-              Alert.alert('📷 Foto Capturada!', `Salva em: ${photo.uri.split('/').pop()}`);
-            }
-          } catch (error) {
-            console.error('❌ Erro ao capturar foto:', error);
-            Alert.alert('❌ Erro', 'Falha ao capturar foto');
-          }
           break;
 
         case 'saveState':
@@ -233,7 +220,6 @@ export default function HomeScreen() {
         case 'calibrate':
         case 'tare':
           console.log('🎯 Calibração/Tara solicitada');
-          Alert.alert('Calibração', 'Mantenha o dispositivo estável...');
           break;
 
         default:
