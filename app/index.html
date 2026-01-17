@@ -1,0 +1,1437 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Airsoft Pro Sight v4.5 (Photo & Updates)</title>
+    
+    <style>
+        /* --- CSS Reset & Base --- */
+        /* 'touch-action: none' desabilita gestos do navegador (como arrastar para voltar),
+           dando controle total dos toques para o JavaScript. */
+        * { box-sizing: border-box; touch-action: none; user-select: none; -webkit-user-select: none; font-family: 'Courier New', Courier, monospace; }
+        
+        /* Fundo TRANSPARENTE para permitir ver a câmera nativa abaixo */
+        /* safe-area-inset garante que elementos não ficam sob a notch ou keyboard */
+        body, html { 
+            margin: 0; 
+            padding: 0; 
+            width: 100%; 
+            height: 100vh;
+            height: 100dvh;
+            overflow: hidden; 
+            background-color: transparent; 
+            color: #0f0;
+            position: fixed;
+        }
+        
+        /* --- Video Container (REMOVIDO - Câmera é nativa) --- */
+        #cam-container { display: none; /* Não usado - câmera é nativa do React Native */ }
+        
+        /* --- UI Layers (Camadas de Interface) --- */
+        /* Pointer-events: none é essencial aqui. Permite ver o HUD, mas os toques
+           passam direto por ele, a menos que atinjam um botão (que terá pointer-events: auto). */
+        #hud-layer { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
+        #controls-layer { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 20; pointer-events: none; }
+        
+        /* O Retículo fica exatamente no centro (50%/50%) e usa translate para ajuste fino */
+        #reticle-layer { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 5; pointer-events: none; width: 0; height: 0; }
+        #marker-layer { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 4; pointer-events: none; }
+
+        /* --- HUD Elements --- */
+        /* Painéis semitransparentes para leitura de dados */
+        .hud-panel { background: rgba(0, 0, 0, 0.5); padding: 5px; border: 1px solid #0f0; font-size: 12px; pointer-events: auto; }
+        
+        #info-panel {
+            position: fixed;
+            top: 10px; left: 10px;
+            transform: scale(0.9); transform-origin: top left;
+            pointer-events: auto; /* Permite interagir se necessário */
+        }
+
+        /* Agrupamento dos elementos da direita (Estabilidade) */
+        #right-hud-group {
+            position: fixed;
+            top: 10px; right: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px; 
+            align-items: flex-end; 
+            transform: scale(0.9); transform-origin: top right;
+            pointer-events: auto;
+        }
+
+        #stability-panel { text-align: right; position: relative; }
+        /* Luzes indicadoras de estabilidade (Red, Orange, Yellow, Green) */
+        .stab-light { display: inline-block; width: 15px; height: 15px; border-radius: 50%; background: #333; margin-left: 5px; border: 1px solid #555; }
+        
+        /* --- Reticle --- */
+        #reticle-svg { overflow: visible; } /* Permite que desenhos passem da caixa se preciso */
+        
+        /* --- D-Pad (Controle Direcional) --- */
+        /* Grid 3x3 para posicionar as setas - REDUZIDO */
+        #dpad-container { 
+            position: fixed; 
+            bottom: 90px; 
+            right: 20px; 
+            display: grid; 
+            grid-template-columns: repeat(3, 40px); 
+            grid-template-rows: repeat(3, 40px);
+            gap: 3px; 
+            pointer-events: auto;
+            opacity: 0.7;
+            z-index: 50;
+        }
+        .dpad-btn {
+            width: 100%; 
+            height: 100%; 
+            font-size: 16px; 
+            padding: 0;
+            display: flex; 
+            justify-content: center; 
+            align-items: center;
+            margin: 0; 
+            background: rgba(0, 50, 0, 0.6); 
+            border: 1px solid rgba(0, 255, 0, 0.3);
+            border-radius: 4px;
+        }
+        .dpad-btn:active { 
+            background: #0f0; 
+            color: #000; 
+            transform: scale(0.95);
+        }
+        /* Mapeamento das células do Grid para formar a cruz */
+        .dpad-btn[data-dir="up"] { grid-column: 2; grid-row: 1; }
+        .dpad-btn[data-dir="left"] { grid-column: 1; grid-row: 2; }
+        .dpad-btn[data-dir="right"] { grid-column: 3; grid-row: 2; }
+        .dpad-btn[data-dir="down"] { grid-column: 2; grid-row: 3; }
+        .dpad-center { 
+            grid-column: 2; 
+            grid-row: 2; 
+            font-size: 10px !important; 
+            border: 1px solid rgba(255, 255, 255, 0.5) !important; 
+            color: #fff !important; 
+            border-radius: 50%; 
+        }
+
+        /* --- Buttons General --- */
+        .btn { 
+            background: rgba(0, 20, 0, 0.8); 
+            border: 1px solid #0a0; 
+            color: #0f0; 
+            padding: 10px 14px; 
+            margin: 0; 
+            font-size: 13px; 
+            cursor: pointer; 
+            pointer-events: auto;
+            border-radius: 6px;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+        .btn:active { 
+            background: #0f0; 
+            color: #000; 
+            transform: scale(0.95);
+        }
+        .btn-danger { 
+            border-color: #a00; 
+            color: #f55;
+            background: rgba(40, 0, 0, 0.8);
+        }
+        .btn-danger:active {
+            background: #f00;
+            color: #000;
+        }
+        .btn-success {
+            border-color: #0a0;
+            color: #0f0;
+            background: rgba(0, 40, 0, 0.9);
+            font-weight: bold;
+        }
+        .btn-success:active {
+            background: #0f0;
+            color: #000;
+        }
+
+        /* Sliders - ZOOM VERTICAL NA ESQUERDA - COMPACTO */
+        #zoom-control-vertical {
+            position: fixed;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+            pointer-events: auto;
+            z-index: 30;
+            opacity: 0.7;
+        }
+        
+        #zoom-control-vertical span {
+            font-size: 11px;
+            color: #0f0;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 2px 6px;
+            border-radius: 3px;
+            border: 1px solid rgba(0, 255, 0, 0.4);
+        }
+        
+        #zoom-slider {
+            writing-mode: bt-lr;
+            -webkit-appearance: slider-vertical;
+            appearance: slider-vertical;
+            width: 5px;
+            height: 150px;
+            background: rgba(0, 255, 0, 0.15);
+            border-radius: 3px;
+            outline: none;
+            cursor: pointer;
+            border: 1px solid rgba(0, 255, 0, 0.3);
+        }
+        
+        #zoom-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 24px;
+            height: 24px;
+            background: #0f0;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        
+        #zoom-slider::-moz-range-thumb {
+            width: 24px;
+            height: 24px;
+            background: #0f0;
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+        }
+        
+        /* Ocultar foco manual - não funcional */
+        #focus-container { display: none !important; }
+
+        /* --- LAYOUT ZONES --- */
+        #left-menu { 
+            position: fixed; 
+            bottom: 20px; 
+            left: 50%; 
+            transform: translateX(-50%);
+            display: flex; 
+            flex-direction: row; 
+            gap: 8px;
+            pointer-events: auto;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 12px;
+            border: 1px solid rgba(0, 255, 0, 0.3);
+            z-index: 100;
+        }
+
+        /* Markers (pontos de impacto) */
+        .marker { 
+            position: absolute; 
+            width: 20px; 
+            height: 20px; 
+            background: rgba(0, 255, 0, 0.3); 
+            border: 1px solid #0f0; 
+            border-radius: 50%; 
+            transform: translate(-50%, -50%); 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            font-size: 10px; 
+            color: #fff; 
+        }
+        
+        /* Estilo do Modal de Perfis */
+        .modal { 
+            display: none; 
+            position: fixed; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%; 
+            background: rgba(0, 0, 0, 0.95); 
+            backdrop-filter: blur(5px);
+            z-index: 100; 
+            justify-content: center; 
+            align-items: center; 
+            flex-direction: column; 
+            overflow-y: auto; 
+            overflow-x: hidden;
+            pointer-events: auto;
+            padding-bottom: max(20px, env(safe-area-inset-bottom));
+        }
+        .modal.active { display: flex; }
+        
+        .modal-content { 
+            background: rgba(10, 10, 10, 0.98); 
+            border: 2px solid #0f0; 
+            border-radius: 8px;
+            padding: 25px; 
+            max-width: 90%; 
+            width: 400px;
+            box-shadow: 0 0 40px rgba(0, 255, 0, 0.3);
+            margin-bottom: 20px;
+        }
+        
+        @media (max-height: 500px) {
+            .modal-content {
+                width: 95%;
+                max-width: 500px;
+                padding: 20px;
+                margin-bottom: 10px;
+            }
+        }
+        
+        .modal-content h2 {
+            color: #0f0;
+            text-align: center;
+            margin: 0 0 20px 0;
+            font-size: 20px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        
+        .form-group { 
+            margin-bottom: 15px; 
+        }
+        
+        .form-group label { 
+            display: block; 
+            margin-bottom: 8px; 
+            color: #0f0;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        
+        .form-group input { 
+            width: 100%; 
+            background: rgba(0, 20, 0, 0.8); 
+            color: #0f0; 
+            border: 1px solid #0a0; 
+            padding: 12px; 
+            border-radius: 4px;
+            font-size: 16px;
+            outline: none;
+            transition: all 0.3s;
+            box-sizing: border-box;
+        }
+        
+        .form-group input:focus {
+            border-color: #0f0;
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+            /* Ajusta scroll quando input tem focus */
+            scroll-margin-bottom: 200px;
+        }
+        
+        .profile-list-item { 
+            background: rgba(0, 20, 0, 0.5);
+            border: 1px solid #0a0; 
+            padding: 12px; 
+            margin-bottom: 8px; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        
+        .profile-list-item:hover {
+            background: rgba(0, 30, 0, 0.7);
+            border-color: #0f0;
+        }
+        
+        .profile-list-item span {
+            color: #0f0;
+            font-size: 16px;
+            flex: 1;
+        }
+        
+        .profile-list-item .btn {
+            margin-left: 5px;
+            padding: 8px 12px;
+            font-size: 14px;
+        }
+        
+        /* Overlay do modo Calibração - apenas cursor, sem mensagem */
+        #calib-overlay { 
+            display: none; 
+            position: absolute; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%; 
+            background: transparent; 
+            z-index: 100; 
+            cursor: crosshair;
+        }
+        #calib-overlay.active { 
+            display: block; 
+        }
+        
+        /* Ocultar controles durante calibração */
+        body.calibrating #left-menu,
+        body.calibrating #zoom-control-vertical,
+        body.calibrating #dpad-container {
+            display: none !important;
+        }
+        
+        /* Manter painel de estabilidade visível durante calibração */
+        body.calibrating #hud-panel-right {
+            display: block !important;
+        }
+
+        .text-green { color: #0f0 !important; }
+        .text-yellow { color: yellow !important; }
+        
+        /* Animação de Flash para simular captura de foto */
+        @keyframes flash-anim {
+            0% { opacity: 0; }
+            50% { opacity: 1; background: #fff; }
+            100% { opacity: 0; }
+        }
+        #flash-layer {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 1000; pointer-events: none; opacity: 0;
+        }
+        
+        /* Modal de Notificação */
+        #notify-modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(10, 10, 10, 0.98);
+            border: 2px solid #0f0;
+            border-radius: 8px;
+            padding: 25px;
+            max-width: 90%;
+            width: 350px;
+            box-shadow: 0 0 40px rgba(0, 255, 0, 0.5);
+            z-index: 2000;
+            text-align: center;
+            pointer-events: auto;
+        }
+        #notify-modal.active {
+            display: block;
+        }
+        #notify-modal.error {
+            border-color: #f00;
+            box-shadow: 0 0 40px rgba(255, 0, 0, 0.5);
+        }
+        #notify-modal h3 {
+            color: #0f0;
+            margin: 0 0 15px 0;
+            font-size: 18px;
+        }
+        #notify-modal.error h3 {
+            color: #f00;
+        }
+        #notify-modal p {
+            color: #ccc;
+            margin: 0 0 20px 0;
+            font-size: 14px;
+        }
+        #notify-backdrop {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(3px);
+            z-index: 1999;
+            pointer-events: auto;
+        }
+        #notify-backdrop.active {
+            display: block;
+        }
+
+        /* --- RESPONSIVIDADE: PORTRAIT vs LANDSCAPE --- */
+        /* Modo RETRATO (Portrait) - Padrão */
+        body.portrait {
+            /* D-Pad fica embaixo à direita */
+            --dpad-bottom: 90px;
+            --dpad-right: 20px;
+            
+            /* Menu de botões fica embaixo centralizado */
+            --menu-bottom: 20px;
+            --menu-left: 50%;
+        }
+
+        /* Modo PAISAGEM (Landscape) */
+        body.landscape {
+            /* D-Pad fica mais alto em paisagem */
+            --dpad-bottom: 60px;
+            --dpad-right: 20px;
+            
+            /* Menu de botões fica embaixo centralizado mas com menos altura */
+            --menu-bottom: 15px;
+            --menu-left: 50%;
+        }
+
+        /* Ajustes específicos para landscape */
+        @media (orientation: landscape) {
+            /* Zoom vertical mais compacto */
+            #zoom-control-vertical {
+                left: 8px;
+            }
+            
+            #zoom-control-vertical span {
+                font-size: 10px;
+                padding: 1px 4px;
+            }
+            
+            #zoom-slider {
+                height: 100px !important;
+            }
+            
+            /* D-Pad mais compacto e mais embaixo */
+            #dpad-container {
+                bottom: 20px !important;
+                right: 15px !important;
+                grid-template-columns: repeat(3, 35px) !important;
+                grid-template-rows: repeat(3, 35px) !important;
+                gap: 2px !important;
+            }
+            
+            .dpad-btn {
+                font-size: 14px !important;
+            }
+            
+            /* Menu de botões mais compacto */
+            #left-menu {
+                bottom: 15px !important;
+                gap: 5px !important;
+                padding: 8px !important;
+            }
+            
+            #left-menu .btn {
+                padding: 8px 10px !important;
+                font-size: 12px !important;
+            }
+            
+            /* Painéis de HUD menores */
+            #info-panel {
+                transform: scale(0.85) !important;
+            }
+            
+            #right-hud-group {
+                transform: scale(0.85) !important;
+            }
+            
+            .modal-content {
+                max-height: 80vh;
+            }
+            
+            #left-menu {
+                gap: 5px;
+            }
+            
+            .btn {
+                padding: 8px 10px;
+                font-size: 12px;
+            }
+        }
+
+        /* Ajustes para portrait */
+        @media (orientation: portrait) {
+            #zoom-control-vertical {
+                height: 150px !important;
+            }
+            
+            #zoom-slider {
+                height: 150px !important;
+            }
+        }
+        
+        #notify-backdrop.active {
+            display: block;
+        }
+        
+    </style>
+</head>
+<body>
+
+    <div id="flash-layer"></div>
+    
+    <!-- Modal de Notificação -->
+    <div id="notify-backdrop"></div>
+    <div id="notify-modal">
+        <h3 id="notify-title">Título</h3>
+        <p id="notify-message">Mensagem</p>
+        <button class="btn btn-success" onclick="Notify.hide()" style="min-width: 120px;">OK</button>
+    </div>
+
+    <div id="cam-container">
+        <video id="video" autoplay playsinline muted></video>
+    </div>
+
+    <div id="marker-layer"></div>
+
+    <div id="reticle-layer">
+        <svg id="reticle-svg" width="100" height="100" viewBox="0 0 100 100">
+            </svg>
+    </div>
+
+    <div id="hud-layer">
+        <div id="info-panel" class="hud-panel">
+            <div>PITCH: <span id="val-pitch">0</span>°</div>
+            <div>ROLL: <span id="val-roll">0</span>°</div>
+            <div>ZOOM: <span id="val-zoom">1.0</span>x (<span id="type-zoom">DIG</span>)</div>
+            <div>OFFSET: <span id="val-offset">0, 0</span></div>
+            <div id="level-indicator" style="margin-top:5px; height:6px; width:100px; background:#333; position:relative; overflow:hidden; border-radius:3px;">
+                <div id="level-bubble" style="position:absolute; left:50%; top:0; height:100%; width:20%; background:#0f0; transform:translateX(-50%); transition: left 0.1s ease-out; border-radius:2px;"></div>
+            </div>
+        </div>
+
+        <div id="right-hud-group">
+            <div id="stability-panel" class="hud-panel">
+                <div>ESTABILIDADE</div>
+                <div style="margin-top:5px;">
+                    <span id="stab-red" class="stab-light"></span>
+                    <span id="stab-orange" class="stab-light"></span>
+                    <span id="stab-yellow" class="stab-light"></span>
+                    <span id="stab-green" class="stab-light"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="controls-layer">
+        
+        <!-- ZOOM VERTICAL - Lateral Esquerda -->
+        <div id="zoom-control-vertical">
+            <span>🔍</span>
+            <input type="range" id="zoom-slider" min="0" max="100" value="0" orient="vertical" oninput="Camera.setZoom(this.value)">
+        </div>
+
+        <div id="left-menu"> 
+            <button class="btn" onclick="UI.toggleSaveModal()" title="Salvar Perfil">💾</button>
+            <button class="btn" onclick="UI.toggleLoadModal()" title="Carregar Perfil">📂</button>
+            <button class="btn" onclick="Reticle.cycleShape()" title="Mudar Forma">🎯</button>
+            <button class="btn" onclick="Reticle.cycleColor()" title="Mudar Cor">🎨</button>
+            <button class="btn" onclick="Calibration.start()" title="Calibrar Mira">🧭</button>
+            <button class="btn" onclick="Markers.clear()" title="Limpar Marcadores">🧹</button>
+        </div>
+
+        <div id="dpad-container">
+            <button class="btn dpad-btn" data-dir="up">▲</button>
+            <button class="btn dpad-btn" data-dir="left">◀</button>
+            <button class="btn dpad-btn dpad-center" onclick="DPad.resetCenter()" title="Centralizar Mira">⏺</button>
+            <button class="btn dpad-btn" data-dir="right">▶</button>
+            <button class="btn dpad-btn" data-dir="down">▼</button>
+        </div>
+    </div>
+
+    <div id="calib-overlay">
+        <!-- Mensagem removida - apenas permite clicar para calibrar -->
+    </div>
+
+    <!-- MODAL DE ERRO DE ESTABILIDADE - REMOVIDO -->
+
+    <!-- MODAL SALVAR PERFIL -->
+    <div id="save-modal" class="modal">
+        <div class="modal-content">
+            <h2>💾 Salvar Perfil</h2>
+            <div class="form-group">
+                <label>Nome do Perfil:</label>
+                <input type="text" id="profile-name" placeholder="Ex: 10 metros, M4A1, Sniper..." maxlength="30">
+            </div>
+            <div style="margin-top:20px; display: flex; gap: 10px; padding-bottom: 20px;">
+                <button class="btn btn-danger" style="flex:1" onclick="UI.toggleSaveModal()">✕ Cancelar</button>
+                <button class="btn btn-success" style="flex:1" onclick="Profiles.saveCurrent()">✓ Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL CARREGAR PERFIL -->
+    <div id="load-modal" class="modal">
+        <div class="modal-content" style="max-height: 85vh;">
+            <h2>📂 Perfis Salvos</h2>
+            <div id="profile-list" style="max-height: 55vh; overflow-y: auto; margin: 15px 0; padding: 5px;"></div>
+            <div style="margin-top:15px; text-align:center;">
+                <button class="btn btn-danger" onclick="UI.toggleLoadModal()" style="min-width: 120px;">✕ Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL CONFIRMAR EXCLUSÃO -->
+    <div id="confirm-modal" class="modal">
+        <div class="modal-content" style="max-width: 350px;">
+            <h2>⚠️ Confirmar Exclusão</h2>
+            <p id="confirm-message" style="color: #0f0; text-align: center; margin: 20px 0; font-size: 15px;"></p>
+            <div style="margin-top:20px; display: flex; gap: 10px;">
+                <button class="btn btn-success" style="flex:1" onclick="UI.confirmDelete()">✓ Excluir</button>
+                <button class="btn btn-danger" style="flex:1" onclick="UI.cancelDelete()">✕ Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+/**
+ * AIRSOFT PRO SIGHT v4.5
+ * Updates: Stability Threshold (<5), Zoom Out (0.5x), Screenshot
+ */
+
+// --- STATE MANAGEMENT ---
+// Objeto central que guarda o estado da aplicação
+const State = {
+    reticle: {
+        x: 0, y: 0, // Deslocamento da mira (Pixel Shift)
+        shapeIdx: 0, colorIdx: 0,
+        shapes: ['red_dot', 'crosshair', 'circle', 'circle_cross', 'chevron', 'ballistic_1', 'ballistic_2', 'ballistic_3'],
+        colors: ['#ff0000', '#00ff00', '#0000ff', '#ffffff', '#ffff00', '#000000', '#ff00ff']
+    },
+    camera: { zoom: 1.0, maxOpticalZoom: 1.0, zoomType: 'DIG', focusMode: 'continuous', focusDistance: 0.0 },
+    sensors: {
+        pitch: 0, roll: 0,
+        lastBeta: 0, lastGamma: 0,
+        taredPitch: 0, taredRoll: 0, // Valores de "Tara" para zerar o horizonte
+        currRawPitchDisp: 0, currRawRollDisp: 0,
+        stabilityScore: 0 // Valor acumulado de movimento
+    },
+    calibrationMode: false,
+    markers: []
+};
+
+// --- DOM ELEMENTS REFERENCE ---
+// Cache dos elementos HTML para performance (evita chamar document.getElementById repetidamente)
+const El = {
+    video: document.getElementById('video'),
+    reticleLayer: document.getElementById('reticle-layer'),
+    reticleSvg: document.getElementById('reticle-svg'),
+    markerLayer: document.getElementById('marker-layer'),
+    zoomSlider: document.getElementById('zoom-slider'),
+    focusContainer: document.getElementById('focus-container'),
+    focusSlider: document.getElementById('focus-slider'),
+    btnFocusText: document.getElementById('btn-focus-text'),
+    valPitch: document.getElementById('val-pitch'),
+    valRoll: document.getElementById('val-roll'),
+    valZoom: document.getElementById('val-zoom'),
+    typeZoom: document.getElementById('type-zoom'),
+    valOffset: document.getElementById('val-offset'),
+    levelBubble: document.getElementById('level-bubble'),
+    stabLights: { r: document.getElementById('stab-red'), o: document.getElementById('stab-orange'), y: document.getElementById('stab-yellow'), g: document.getElementById('stab-green') },
+    calibOverlay: document.getElementById('calib-overlay'),
+    profileModal: document.getElementById('profile-modal'),
+    saveModal: document.getElementById('save-modal'),
+    loadModal: document.getElementById('load-modal'),
+    confirmModal: document.getElementById('confirm-modal'),
+    confirmMessage: document.getElementById('confirm-message'),
+    profileList: document.getElementById('profile-list'),
+    profileName: document.getElementById('profile-name'),
+    flashLayer: document.getElementById('flash-layer'),
+    notifyModal: document.getElementById('notify-modal'),
+    notifyBackdrop: document.getElementById('notify-backdrop'),
+    notifyTitle: document.getElementById('notify-title'),
+    notifyMessage: document.getElementById('notify-message')
+};
+
+// --- SENSORS (Giroscópio/Acelerômetro) ---
+const Sensors = {
+    init() {
+        console.log('🎯 Sensors.init() - Usando DeviceMotion do React Native');
+        // NÃO usa DeviceOrientationEvent do navegador
+        // Os dados vêm do React Native via window.updateStability()
+    },
+    handleOrientation(e) {
+        // Não usado - dados vêm do React Native
+    },
+    tare() {
+        // Zera os sensores baseado na posição atual
+        State.sensors.taredPitch = State.sensors.currRawPitchDisp;
+        State.sensors.taredRoll = State.sensors.currRawRollDisp;
+        if(navigator.vibrate) navigator.vibrate([50, 50]); // Feedback tátil
+        
+        // Notifica React Native
+        if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'tare'
+            }));
+        }
+    },
+    updateStabilityUI() {
+        const score = State.sensors.stabilityScore;
+        const lights = El.stabLights;
+        Object.values(lights).forEach(l => l.style.background = '#333'); // Apaga todas
+        
+        // Define qual luz acender baseado no Score (quanto menor, mais estável)
+        // Dificuldade moderada
+        if (score < 4) {
+            lights.g.style.background = '#0f0'; // Verde - Muito estável
+        } else if (score < 10) {
+            lights.y.style.background = 'yellow'; // Amarelo - Estável
+        } else if (score < 20) {
+            lights.o.style.background = 'orange'; // Laranja - Instável
+        } else {
+            lights.r.style.background = 'red'; // Vermelho - Muito instável
+        }
+    }
+};
+
+// Função global para receber dados de estabilidade do React Native
+window.updateStability = function(score) {
+    State.sensors.stabilityScore = score;
+    Sensors.updateStabilityUI();
+    
+    // Atualiza display se existir
+    if (El.valStability) {
+        El.valStability.innerText = score.toFixed(1);
+    }
+    
+    // Log a cada 100 atualizações para debug
+    if (!window._stabilityLogCount) window._stabilityLogCount = 0;
+    window._stabilityLogCount++;
+    
+    if (window._stabilityLogCount % 100 === 0) {
+        let status = '';
+        if (score < 4) status = '🟢 Muito Estável';
+        else if (score < 10) status = '🟡 Estável';
+        else if (score < 20) status = '🟠 Instável';
+        else status = '🔴 Muito Instável';
+        
+        console.log(`📊 Estabilidade: ${score.toFixed(1)} - ${status}`);
+    }
+};
+
+// Função global para receber dados de orientação (pitch/roll) do React Native
+window.updateOrientation = function(pitch, roll) {
+    // Detecta se está em paisagem
+    const isLandscape = window.innerWidth > window.innerHeight;
+    
+    // Em paisagem, os eixos são trocados
+    let effectivePitch, effectiveRoll;
+    
+    if (isLandscape) {
+        // Em paisagem: pitch vira roll e roll vira pitch
+        effectivePitch = roll;
+        effectiveRoll = -pitch; // Inverte para manter direção correta
+    } else {
+        // Em retrato: normal
+        effectivePitch = pitch;
+        effectiveRoll = roll;
+    }
+    
+    // Atualiza State com valores efetivos
+    State.sensors.currRawPitchDisp = effectivePitch;
+    State.sensors.currRawRollDisp = effectiveRoll;
+    
+    // Calcula valores compensados pela tara
+    const compensatedPitch = effectivePitch - State.sensors.taredPitch;
+    const compensatedRoll = effectiveRoll - State.sensors.taredRoll;
+    
+    // Atualiza displays
+    if (El.valPitch) {
+        El.valPitch.innerText = compensatedPitch.toFixed(1);
+    }
+    if (El.valRoll) {
+        El.valRoll.innerText = compensatedRoll.toFixed(1);
+    }
+    
+    // Atualiza nível (bolha) - limita movimento para não sair da div
+    if (El.levelBubble) {
+        // Roll afeta posição horizontal da bolha
+        // Limita o offset entre -40% e +40% para a bolha não sair
+        const rollOffset = Math.max(-40, Math.min(40, compensatedRoll * 2)); // Amplifica mas limita
+        El.levelBubble.style.left = `calc(50% + ${rollOffset}%)`;
+    }
+    
+    // Log a cada 100 updates
+    if (!window._orientationLogCount) window._orientationLogCount = 0;
+    window._orientationLogCount++;
+    
+    if (window._orientationLogCount % 100 === 0) {
+        console.log(`📐 Orientação: ${isLandscape ? 'PAISAGEM' : 'RETRATO'} | Pitch: ${compensatedPitch.toFixed(1)}° | Roll: ${compensatedRoll.toFixed(1)}°`);
+    }
+};
+
+// --- CAMERA CONTROL (ADAPTADO PARA REACT NATIVE) ---
+window.Camera = {
+    track: null, capabilities: {},
+    async init() {
+        console.log('📷 Camera.init() - Usando câmera nativa do Expo (não WebView)');
+        // NÃO inicializa getUserMedia - a câmera é nativa do React Native
+        // Apenas configura os valores padrão
+        State.camera.maxOpticalZoom = 1.0; 
+        El.zoomSlider.max = 100; // 0-100 para 0-1 normalizado
+        El.zoomSlider.min = 0;
+        El.zoomSlider.value = 0; // Inicia sem zoom
+        
+        // Configura foco padrão
+        El.focusSlider.min = 0; 
+        El.focusSlider.max = 100;
+        
+        this.setZoom(0); // Zoom inicial 0 (sem zoom)
+    },
+    setZoom(val) {
+        // Converte 0-100 para 0-1 normalizado para Expo Camera
+        const zoomNormalized = val / 100;
+        State.camera.zoom = zoomNormalized;
+        
+        // Envia para React Native
+        if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'zoom',
+                value: zoomNormalized
+            }));
+        }
+        
+        // Atualiza display (0-10x)
+        El.valZoom.innerText = (zoomNormalized * 10).toFixed(1);
+        El.typeZoom.innerText = 'DIG';
+        El.typeZoom.className = 'text-yellow';
+    },
+    toggleFocusMode() {
+        console.log('🎯 toggleFocusMode - Não implementado no Expo Camera');
+        // Câmera nativa do Expo não expõe controle de foco via WebView
+        alert('Foco automático gerenciado pela câmera nativa');
+    },
+    setFocusDistance(val) {
+        console.log('🎯 setFocusDistance - Não implementado no Expo Camera');
+    },
+
+    // Captura de Foto via React Native
+    takePhoto() {
+        console.log('📷 takePhoto - Solicitando captura via React Native');
+        
+        // Animação visual do flash
+        El.flashLayer.style.animation = 'none';
+        El.flashLayer.offsetHeight;
+        El.flashLayer.style.animation = 'flash-anim 0.3s ease-out';
+        
+        // Envia comando para React Native capturar foto
+        if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'takePhoto'
+            }));
+        } else {
+            alert('Função de foto disponível apenas no app');
+        }
+    }
+};
+
+// --- RETICLE (Miras SVG) ---
+window.Reticle = {
+    // Atualiza a posição do div #reticle-layer usando transform CSS
+    updatePosition() { 
+        // #reticle-layer tem width:0 height:0, mas o SVG dentro tem 100x100px
+        // O SVG está centralizado em (50, 50) no viewBox
+        // Precisamos subtrair 50px para centralizar o SVG no ponto desejado
+        const transformValue = `translate(calc(-50px + ${State.reticle.x}px), calc(-50px + ${State.reticle.y}px))`;
+        El.reticleLayer.style.transform = transformValue;
+        El.valOffset.innerText = `${Math.round(State.reticle.x)}, ${Math.round(State.reticle.y)}`; 
+        console.log(`📍 Reticle posicionado em offset: (${State.reticle.x}, ${State.reticle.y})`);
+    },
+    
+    // Renderiza o SVG baseado na forma selecionada
+    draw() {
+        const c = State.reticle.colors[State.reticle.colorIdx]; const s = State.reticle.shapes[State.reticle.shapeIdx]; let h = ''; const w = 2;
+        // Biblioteca de formas SVG (Strings)
+        switch(s) {
+            case 'red_dot': h=`<circle cx="50" cy="50" r="3" fill="${c}" />`; break;
+            case 'crosshair': h=`<line x1="50" y1="10" x2="50" y2="90" stroke="${c}" stroke-width="${w}" /><line x1="10" y1="50" x2="90" y2="50" stroke="${c}" stroke-width="${w}" />`; break;
+            case 'circle': h=`<circle cx="50" cy="50" r="30" stroke="${c}" stroke-width="${w}" fill="none" /><circle cx="50" cy="50" r="2" fill="${c}" />`; break;
+            case 'circle_cross': h=`<circle cx="50" cy="50" r="30" stroke="${c}" stroke-width="${w}" fill="none" /><line x1="50" y1="20" x2="50" y2="80" stroke="${c}" stroke-width="${w}" /><line x1="20" y1="50" x2="80" y2="50" stroke="${c}" stroke-width="${w}" />`; break;
+            case 'chevron': h=`<polyline points="35,60 50,40 65,60" fill="none" stroke="${c}" stroke-width="4" /><circle cx="50" cy="40" r="1" fill="${c}" />`; break;
+            // Retículos Balísticos Complexos
+            case 'ballistic_1': h=`<line x1="50" y1="50" x2="90" y2="50" stroke="${c}" stroke-width="${w}" /><line x1="10" y1="50" x2="30" y2="50" stroke="${c}" stroke-width="${w}" /><line x1="30" y1="50" x2="30" y2="60" stroke="${c}" stroke-width="${w}" /><line x1="30" y1="60" x2="10" y2="60" stroke="${c}" stroke-width="${w}" /><line x1="10" y1="60" x2="10" y2="50" stroke="${c}" stroke-width="${w}" /><line x1="10" y1="52" x2="15" y2="52" stroke="${c}" stroke-width="1" /><line x1="10" y1="54" x2="20" y2="54" stroke="${c}" stroke-width="1" /><line x1="10" y1="56" x2="25" y2="56" stroke="${c}" stroke-width="1" /><line x1="10" y1="58" x2="28" y2="58" stroke="${c}" stroke-width="1" /><polyline points="50,45 55,50 50,55" fill="none" stroke="${c}" stroke-width="${w}" /><line x1="50" y1="55" x2="50" y2="70" stroke="${c}" stroke-width="${w}" /><polyline points="48,52 50,50 52,52" fill="none" stroke="${c}" stroke-width="1" />`; break;
+            case 'ballistic_2': h=`<line x1="50" y1="10" x2="50" y2="40" stroke="${c}" stroke-width="${w}" /><line x1="50" y1="60" x2="50" y2="90" stroke="${c}" stroke-width="${w}" /><line x1="10" y1="50" x2="40" y2="50" stroke="${c}" stroke-width="${w}" /><line x1="60" y1="50" x2="90" y2="50" stroke="${c}" stroke-width="${w}" /><circle cx="50" cy="50" r="1" fill="${c}" /><circle cx="50" cy="45" r="1" fill="${c}" /><circle cx="50" cy="40" r="1" fill="${c}" /><circle cx="50" cy="55" r="1" fill="${c}" /><circle cx="50" cy="60" r="1" fill="${c}" /><circle cx="45" cy="50" r="1" fill="${c}" /><circle cx="40" cy="50" r="1" fill="${c}" /><circle cx="55" cy="50" r="1" fill="${c}" /><circle cx="60" cy="50" r="1" fill="${c}" />`; break;
+            case 'ballistic_3': h=`<line x1="50" y1="10" x2="50" y2="90" stroke="${c}" stroke-width="${w}" /><line x1="10" y1="50" x2="90" y2="50" stroke="${c}" stroke-width="${w}" /><line x1="45" y1="55" x2="55" y2="55" stroke="${c}" stroke-width="${w}" /><line x1="40" y1="60" x2="60" y2="60" stroke="${c}" stroke-width="${w}" /><line x1="35" y1="65" x2="65" y2="65" stroke="${c}" stroke-width="${w}" />`; break;
+        }
+        El.reticleSvg.innerHTML = h;
+    },
+    cycleShape() { 
+        State.reticle.shapeIdx = (State.reticle.shapeIdx + 1) % State.reticle.shapes.length; 
+        this.draw();
+        
+        // Log silencioso - sem modal
+        const shapeName = State.reticle.shapes[State.reticle.shapeIdx];
+        const shapeNames = {
+            'red_dot': 'Ponto Vermelho',
+            'crosshair': 'Cruz',
+            'circle': 'Círculo',
+            'circle_cross': 'Círculo + Cruz',
+            'chevron': 'Chevron',
+            'ballistic_1': 'Balístico 1',
+            'ballistic_2': 'Balístico 2',
+            'ballistic_3': 'Balístico 3'
+        };
+        console.log(`🎯 Mira alterada: ${shapeNames[shapeName] || shapeName}`);
+    },
+    cycleColor() { 
+        State.reticle.colorIdx = (State.reticle.colorIdx + 1) % State.reticle.colors.length; 
+        this.draw();
+        
+        // Log silencioso - sem modal
+        const colorName = State.reticle.colors[State.reticle.colorIdx];
+        const colorNames = {
+            '#0f0': 'Verde',
+            '#f00': 'Vermelho',
+            '#00f': 'Azul',
+            '#ff0': 'Amarelo',
+            '#f0f': '🟣 Magenta',
+            '#0ff': '🔷 Ciano',
+            '#fff': '⚪ Branco',
+            '#ffa500': '🟠 Laranja'
+        };
+        
+        console.log(`🎨 Cor alterada: ${colorNames[colorName] || colorName}`);
+    }
+};
+
+// --- CONTROLS & D-PAD ---
+window.DPad = {
+    activeDirs: new Set(), interval: null, speed: 3,
+    init() { 
+        // Adiciona listeners de toque para cada botão do D-Pad
+        document.querySelectorAll('.dpad-btn').forEach(b => { 
+            if(b.classList.contains('dpad-center'))return; 
+            const d=b.dataset.dir; 
+            // Suporta tanto Touch quanto Mouse para compatibilidade
+            b.addEventListener('touchstart',e=>{e.preventDefault();this.start(d)}); 
+            b.addEventListener('touchend',e=>{e.preventDefault();this.stop(d)}); 
+            b.addEventListener('mousedown',e=>this.start(d)); 
+            b.addEventListener('mouseup',e=>this.stop(d)); 
+        }); 
+    },
+    // Loop de animação para movimento contínuo enquanto segura o botão
+    start(d) { this.activeDirs.add(d); if(!this.interval) this.interval = setInterval(()=>this.loop(),16); },
+    stop(d) { this.activeDirs.delete(d); if(this.activeDirs.size===0){clearInterval(this.interval);this.interval=null;} },
+    loop() { 
+        let x=0,y=0; 
+        if(this.activeDirs.has('up'))y-=this.speed; 
+        if(this.activeDirs.has('down'))y+=this.speed; 
+        if(this.activeDirs.has('left'))x-=this.speed; 
+        if(this.activeDirs.has('right'))x+=this.speed; 
+        if(x||y){State.reticle.x+=x;State.reticle.y+=y;Reticle.updatePosition();} 
+    },
+    resetCenter() { State.reticle.x=0; State.reticle.y=0; Reticle.updatePosition(); }
+};
+
+// --- MARKERS (Sistema de marcação de tiro) ---
+window.Markers = {
+    counter: 1,
+    init() { 
+        // Ouve toques no corpo da página
+        document.body.addEventListener('touchstart', e => { 
+            // Ignora toques se for em um botão ou controle
+            if(e.target.closest('.btn')||e.target.closest('input')||e.target.closest('.modal-content')||e.target.closest('#dpad-container')||e.target.closest('.slider-box')) return; 
+            
+            // Se estiver calibrando, desvia o fluxo para o módulo Calibration
+            if(State.calibrationMode){Calibration.tap(e);return;} 
+            
+            // Senão, cria um marcador
+            this.add(e.touches[0]); 
+        }); 
+    },
+    add(t) { const d=document.createElement('div'); d.className='marker'; d.innerText=this.counter++; d.style.left=t.clientX+'px'; d.style.top=t.clientY+'px'; El.markerLayer.appendChild(d); },
+    clear() { El.markerLayer.innerHTML=''; this.counter=1; }
+};
+
+// --- CALIBRATION MODE ---
+// Lógica para alinhar o tiro real com a mira digital
+window.Calibration = {
+    start() { 
+        // Permite calibração sempre, sem verificar estabilidade
+        State.calibrationMode = true; 
+        document.body.classList.add('calibrating');
+        El.calibOverlay.classList.add('active');
+        
+        console.log('🎯 Modo de calibração ativado - Toque na tela para posicionar a mira');
+    },
+    tap(e) { 
+        e.preventDefault(); 
+        const t = e.touches[0]; 
+        
+        // Posição exata do clique na tela
+        const clickX = t.clientX;
+        const clickY = t.clientY;
+        
+        // Centro da tela
+        const centerX = window.innerWidth / 2;
+        const centerY = window.innerHeight / 2;
+        
+        // Calcula o offset necessário para colocar o CENTRO da mira no ponto clicado
+        // Como o reticle usa transform com -50%, precisamos compensar isso
+        State.reticle.x = clickX - centerX; 
+        State.reticle.y = clickY - centerY;
+        
+        console.log(`🎯 Clique em: (${clickX}, ${clickY})`);
+        console.log(`🎯 Centro da tela: (${centerX}, ${centerY})`);
+        console.log(`🎯 Offset da mira: (${State.reticle.x}, ${State.reticle.y})`);
+        
+        // Atualiza a posição visual da mira imediatamente
+        Reticle.updatePosition(); 
+        this.finish(); 
+    },
+    finish() { 
+        State.calibrationMode = false; 
+        document.body.classList.remove('calibrating');
+        El.calibOverlay.classList.remove('active');
+        
+        // Redesenha a mira com a cor original
+        Reticle.draw(); 
+        
+        console.log('✅ Calibração concluída');
+    },
+    cancel() { 
+        State.calibrationMode = false; 
+        document.body.classList.remove('calibrating');
+        El.calibOverlay.classList.remove('active');
+        Reticle.draw(); 
+    }
+};
+
+// --- PROFILES (Persistência via localStorage) ---
+window.Profiles = {
+    storageKey: 'airsoft_pro_profiles',
+    
+    // Carrega do localStorage
+    loadFromStorage() {
+        try {
+            const stored = localStorage.getItem(this.storageKey);
+            return stored ? JSON.parse(stored) : [];
+        } catch(e) {
+            console.error('❌ Erro ao carregar perfis do localStorage:', e);
+            return [];
+        }
+    },
+    
+    // Salva no localStorage
+    saveToStorage(profiles) {
+        try {
+            localStorage.setItem(this.storageKey, JSON.stringify(profiles));
+            console.log('💾 Perfis salvos no localStorage:', profiles.length);
+        } catch(e) {
+            console.error('❌ Erro ao salvar perfis no localStorage:', e);
+        }
+    },
+    
+    // Retorna lista atual
+    getAll() {
+        return this.loadFromStorage();
+    },
+
+    saveCurrent() {
+        const profileName = El.profileName.value.trim();
+        if (!profileName) {
+            Notify.error('Por favor, digite um nome para o perfil.');
+            El.profileName.focus();
+            return;
+        }
+        
+        // Captura TODAS as configurações atuais
+        const profile = {
+            id: Date.now(),
+            name: profileName,
+            reticle: {
+                x: State.reticle.x,
+                y: State.reticle.y,
+                shapeIdx: State.reticle.shapeIdx,
+                colorIdx: State.reticle.colorIdx,
+                shapes: State.reticle.shapes,
+                colors: State.reticle.colors
+            },
+            zoom: State.camera.zoom
+        };
+        
+        console.log('💾 Salvando perfil:', profile);
+        
+        // Carrega lista atual, adiciona novo e salva
+        let profiles = this.getAll();
+        profiles.push(profile);
+        this.saveToStorage(profiles);
+        
+        // Limpa o input e fecha o modal
+        El.profileName.value = '';
+        UI.toggleSaveModal();
+        
+        // Atualiza a lista visual
+        this.render();
+        
+        // Mostra notificação de sucesso
+        Notify.success(`Perfil "${profileName}" salvo com sucesso!`);
+    },
+
+    load(id) {
+        console.log('⚡ LOAD CHAMADO! ID:', id, 'Tipo:', typeof id);
+        
+        // Carrega perfis do storage
+        const profiles = this.getAll();
+        const numId = Number(id);
+        
+        console.log('🔍 Procurando ID:', numId, 'em', profiles.map(p => p.id));
+        
+        const profile = profiles.find(p => p.id === numId);
+        
+        if (!profile) {
+            Notify.error('Perfil não encontrado!');
+            console.error('Perfil não encontrado:', id);
+            return;
+        }
+        
+        console.log('📂 Carregando perfil:', profile.name);
+        
+        // Restaura TODAS as configurações da mira
+        State.reticle.x = profile.reticle.x || 0;
+        State.reticle.y = profile.reticle.y || 0;
+        State.reticle.shapeIdx = profile.reticle.shapeIdx || 0;
+        State.reticle.colorIdx = profile.reticle.colorIdx || 0;
+        
+        Reticle.draw();
+        Reticle.updatePosition();
+        
+        // Restaura o zoom
+        const zoomValue = (profile.zoom || 0) * 100;
+        Camera.setZoom(zoomValue);
+        if (El.zoomSlider) {
+            El.zoomSlider.value = zoomValue;
+        }
+        
+        Notify.success(`Perfil "${profile.name}" carregado com sucesso!`);
+        UI.toggleLoadModal();
+    },
+
+    delete(id) {
+        console.log('⚡ DELETE CHAMADO! ID:', id, 'Tipo:', typeof id);
+        
+        // Carrega perfis do storage
+        let profiles = this.getAll();
+        const numId = Number(id);
+        
+        const profile = profiles.find(p => p.id === numId);
+        
+        if (!profile) {
+            Notify.error('Perfil não encontrado!');
+            console.error('Perfil não encontrado:', id);
+            return;
+        }
+        
+        // Armazena o ID do perfil a ser deletado e mostra o modal de confirmação
+        UI.pendingDeleteId = numId;
+        UI.pendingDeleteName = profile.name;
+        UI.showDeleteConfirm(profile.name);
+    },
+    
+    render() {
+        const profiles = this.getAll();
+        
+        console.log('🎨 Renderizando lista de perfis. Total:', profiles.length);
+        
+        if (profiles.length === 0) {
+            El.profileList.innerHTML = '<p style="text-align: center; color: #888; padding: 30px; font-size: 14px;">📭 Nenhum perfil salvo ainda</p>';
+            return;
+        }
+        
+        console.log('📋 Perfis:', profiles.map(p => `${p.name}:${p.id}`));
+        
+        El.profileList.innerHTML = profiles.map(p => 
+            `<div class="profile-list-item">
+                <span style="font-weight: 500;">📌 ${p.name}</span>
+                <div style="display: flex; gap: 5px;">
+                    <button class="btn btn-success" onclick="Profiles.load(${p.id})" title="Carregar perfil" style="padding: 8px 12px;">📂</button>
+                    <button class="btn btn-danger" onclick="Profiles.delete(${p.id})" title="Excluir perfil" style="padding: 8px 12px;">🗑️</button>
+                </div>
+            </div>`
+        ).join('');
+        
+        console.log('✅ Lista renderizada');
+    }
+};
+
+// --- NOTIFY SYSTEM ---
+window.Notify = {
+    show(title, message, isError = false) {
+        El.notifyTitle.textContent = title;
+        El.notifyMessage.textContent = message;
+        
+        if (isError) {
+            El.notifyModal.classList.add('error');
+        } else {
+            El.notifyModal.classList.remove('error');
+        }
+        
+        El.notifyBackdrop.classList.add('active');
+        El.notifyModal.classList.add('active');
+        
+        console.log(`📣 Notificação: ${title} - ${message}`);
+    },
+    
+    hide() {
+        El.notifyBackdrop.classList.remove('active');
+        El.notifyModal.classList.remove('active');
+        El.notifyModal.classList.remove('error');
+    },
+    
+    success(message) {
+        this.show('✅ Sucesso', message, false);
+    },
+    
+    error(message) {
+        this.show('❌ Erro', message, true);
+    },
+    
+    init() {
+        // Fecha ao clicar no backdrop
+        El.notifyBackdrop.addEventListener('click', () => {
+            this.hide();
+        });
+    }
+};
+
+// --- UI HELPERS ---
+window.UI = {
+    pendingDeleteId: null,
+    pendingDeleteName: null,
+    
+    toggleSaveModal() { 
+        El.saveModal.classList.toggle('active'); 
+        if(El.saveModal.classList.contains('active')) {
+            El.profileName.value = '';
+            El.profileName.focus();
+        }
+    },
+    toggleLoadModal() { 
+        const isOpening = !El.loadModal.classList.contains('active');
+        El.loadModal.classList.toggle('active'); 
+        
+        if(isOpening) {
+            console.log('📂 Abrindo modal de carregar...');
+            // Carrega e renderiza perfis do localStorage
+            Profiles.render();
+        }
+    },
+    
+    showDeleteConfirm(profileName) {
+        El.confirmMessage.textContent = `Deseja excluir o perfil "${profileName}"?\n\nEsta ação não pode ser desfeita.`;
+        El.confirmModal.classList.add('active');
+    },
+    
+    confirmDelete() {
+        if (!this.pendingDeleteId) return;
+        
+        let profiles = Profiles.getAll();
+        profiles = profiles.filter(p => p.id !== this.pendingDeleteId);
+        
+        Profiles.saveToStorage(profiles);
+        
+        const name = this.pendingDeleteName;
+        console.log(`🗑️ Perfil "${name}" excluído. Restam ${profiles.length} perfis.`);
+        
+        // Limpa dados da exclusão pendente
+        this.pendingDeleteId = null;
+        this.pendingDeleteName = null;
+        
+        // Fecha modal de confirmação
+        El.confirmModal.classList.remove('active');
+        
+        // Atualiza a lista visual
+        Profiles.render();
+        
+        // Mostra notificação
+        Notify.success(`Perfil "${name}" excluído com sucesso!`);
+    },
+    
+    cancelDelete() {
+        this.pendingDeleteId = null;
+        this.pendingDeleteName = null;
+        El.confirmModal.classList.remove('active');
+    }
+};
+
+// --- ALIASES GLOBAIS PARA ONCLICK ---
+// Criar aliases para uso em atributos onclick do HTML
+const Profiles = window.Profiles;
+const Camera = window.Camera;
+const Reticle = window.Reticle;
+const DPad = window.DPad;
+const Markers = window.Markers;
+const Calibration = window.Calibration;
+const Notify = window.Notify;
+const UI = window.UI;
+
+// --- INITIALIZATION ---
+// Inicia tudo quando a página carregar
+window.addEventListener('load', ()=>{
+    console.log('🚀 Airsoft Pro Sight - Inicializando...');
+    console.log('🔧 ReactNativeWebView disponível:', !!window.ReactNativeWebView);
+    
+    Camera.init();
+    Sensors.init();
+    DPad.init();
+    Markers.init();
+    Notify.init();
+    Reticle.draw();
+    Reticle.updatePosition();
+    
+    // Detecta orientação inicial
+    handleOrientationChange();
+    
+    // Notifica React Native que está pronto
+    if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'webview_ready',
+            message: 'HTML carregado e funcional'
+        }));
+    }
+    
+    console.log('✅ Inicialização completa');
+});
+
+// Detector de mudança de orientação
+function handleOrientationChange() {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    const isPortrait = height > width;
+    const isLandscape = width > height;
+    
+    console.log(`📱 Dimensões: ${width}x${height}`);
+    console.log(`📱 Orientação: ${isPortrait ? 'RETRATO ⬆️' : 'PAISAGEM ↔️'}`);
+    
+    // Remove ambas as classes primeiro
+    document.body.classList.remove('landscape', 'portrait', 'orientation-changed');
+    
+    // Adiciona a classe correta
+    if (isLandscape) {
+        document.body.classList.add('landscape');
+        console.log('✅ Modo PAISAGEM ativado');
+    } else {
+        document.body.classList.add('portrait');
+        console.log('✅ Modo RETRATO ativado');
+    }
+    
+    // Força redesenho
+    setTimeout(() => {
+        Reticle.updatePosition();
+        console.log('🎯 Reticle reposicionado');
+    }, 100);
+}
+
+// Listeners para mudança de orientação
+window.addEventListener('orientationchange', () => {
+    console.log('🔄 ORIENTATIONCHANGE detectado!');
+    setTimeout(handleOrientationChange, 200);
+});
+
+// Listener para resize (mais responsivo)
+window.addEventListener('resize', () => {
+    console.log('📐 RESIZE detectado!');
+    handleOrientationChange();
+});
+
+// Listener extra para screen orientation API (se disponível)
+if (screen.orientation) {
+    screen.orientation.addEventListener('change', () => {
+        console.log('🔄 SCREEN ORIENTATION CHANGE detectado!');
+        setTimeout(handleOrientationChange, 200);
+    });
+}
+</script>
+</body>
+</html>
