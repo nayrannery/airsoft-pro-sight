@@ -31,10 +31,12 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "screenOrientation": "fullSensor",
       "permissions": [
-        "CAMERA"
-      ]
+        "CAMERA",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.iranferrari.airsoftprosight"
     },
     "web": {
       "output": "static",
@@ -65,6 +67,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c5bd35aa-4a7a-4303-9885-2b7e0faffda0"
+      }
     }
   }
 }

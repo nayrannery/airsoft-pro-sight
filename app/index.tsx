@@ -1,10 +1,10 @@
-import { StyleSheet, View, Text, TouchableOpacity, Alert, StatusBar } from 'react-native';
-import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
-import { WebView, WebViewMessageEvent } from 'react-native-webview';
-import { useState, useRef, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { DeviceMotion } from 'expo-sensors';
+import { CameraType, CameraView, useCameraPermissions } from 'expo-camera';
 import * as ScreenOrientation from 'expo-screen-orientation';
+import { DeviceMotion } from 'expo-sensors';
+import { useEffect, useRef, useState } from 'react';
+import { Alert, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { WebView, WebViewMessageEvent } from 'react-native-webview';
 
 export default function CameraScreen() {
   const [facing, setFacing] = useState<CameraType>('back');

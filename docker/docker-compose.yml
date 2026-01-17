@@ -1,0 +1,11 @@
+version: "3"
+
+services:
+  eas-build:
+    build: .
+    volumes:
+      - ..:/project
+      - ~/.eas:/root/.eas
+      - ~/.expo:/root/.expo
+    command: bash
+    working_dir: /project

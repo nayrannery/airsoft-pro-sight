@@ -45,3 +45,4 @@ app-example
 /.expo-shared
 .expo/*
 .expo-shared/*
+# /docker
