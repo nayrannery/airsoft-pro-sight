@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#000000">
     <title>Airsoft Pro Sight v4.5 (Photo & Updates)</title>
     
     <style>
@@ -23,7 +24,30 @@
             background-color: transparent; 
             color: #0f0;
             position: fixed;
+            top: 0;
+            left: 0;
+            -webkit-app-region: no-drag;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
         }
+        
+        /* Esconde scrollbars e controles de navegação */
+        ::-webkit-scrollbar { display: none !important; }
+        * { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Status Bar Transparente para respeitar safe-area-inset-top */
+        #status-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: env(safe-area-inset-top);
+            background: transparent;
+            z-index: 1000;
+            pointer-events: none;
+        }
+        
+        /* Camadas de UI já configuradas abaixo com safe-area-inset */
         
         /* --- Video Container (REMOVIDO - Câmera é nativa) --- */
         #cam-container { display: none; /* Não usado - câmera é nativa do React Native */ }
@@ -31,12 +55,12 @@
         /* --- UI Layers (Camadas de Interface) --- */
         /* Pointer-events: none é essencial aqui. Permite ver o HUD, mas os toques
            passam direto por ele, a menos que atinjam um botão (que terá pointer-events: auto). */
-        #hud-layer { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
-        #controls-layer { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 20; pointer-events: none; }
+        #hud-layer { position: fixed; top: env(safe-area-inset-top); left: 0; width: 100%; height: calc(100% - env(safe-area-inset-top)); z-index: 10; pointer-events: none; }
+        #controls-layer { position: fixed; top: env(safe-area-inset-top); left: 0; width: 100%; height: calc(100% - env(safe-area-inset-top)); z-index: 20; pointer-events: none; }
         
         /* O Retículo fica exatamente no centro (50%/50%) e usa translate para ajuste fino */
         #reticle-layer { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 5; pointer-events: none; width: 0; height: 0; }
-        #marker-layer { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 4; pointer-events: none; }
+        #marker-layer { position: fixed; top: env(safe-area-inset-top); left: 0; width: 100%; height: calc(100% - env(safe-area-inset-top)); z-index: 4; pointer-events: none; }
 
         /* --- HUD Elements --- */
         /* Painéis semitransparentes para leitura de dados */
@@ -44,7 +68,7 @@
         
         #info-panel {
             position: fixed;
-            top: 10px; left: 10px;
+            top: calc(env(safe-area-inset-top) + 5px); left: 10px;
             transform: scale(0.9); transform-origin: top left;
             pointer-events: auto; /* Permite interagir se necessário */
         }
@@ -52,7 +76,7 @@
         /* Agrupamento dos elementos da direita (Estabilidade) */
         #right-hud-group {
             position: fixed;
-            top: 10px; right: 10px;
+            top: calc(env(safe-area-inset-top) + 5px); right: 10px;
             display: flex;
             flex-direction: column;
             gap: 5px; 
@@ -72,7 +96,7 @@
         /* Grid 3x3 para posicionar as setas - REDUZIDO */
         #dpad-container { 
             position: fixed; 
-            bottom: 90px; 
+            bottom: 120px; 
             right: 20px; 
             display: grid; 
             grid-template-columns: repeat(3, 40px); 
@@ -120,7 +144,7 @@
             border: 1px solid #0a0; 
             color: #0f0; 
             padding: 10px 14px; 
-            margin: 0; 
+            margin: 5px 0; 
             font-size: 13px; 
             cursor: pointer; 
             pointer-events: auto;
@@ -491,9 +515,20 @@
 
         /* Ajustes específicos para landscape */
         @media (orientation: landscape) {
+            /* Margens laterais e superiores em landscape */
+            #info-panel {
+                left: 30px !important;
+                top: calc(env(safe-area-inset-top) + 15px) !important;
+            }
+            
+            #right-hud-group {
+                right: 30px !important;
+                top: calc(env(safe-area-inset-top) + 15px) !important;
+            }
+            
             /* Zoom vertical mais compacto */
             #zoom-control-vertical {
-                left: 8px;
+                left: 30px;
             }
             
             #zoom-control-vertical span {
@@ -508,7 +543,7 @@
             /* D-Pad mais compacto e mais embaixo */
             #dpad-container {
                 bottom: 20px !important;
-                right: 15px !important;
+                right: 30px !important;
                 grid-template-columns: repeat(3, 35px) !important;
                 grid-template-rows: repeat(3, 35px) !important;
                 gap: 2px !important;
@@ -573,6 +608,9 @@
 <body>
 
     <div id="flash-layer"></div>
+    
+    <!-- Status Bar Transparente -->
+    <div id="status-bar"></div>
     
     <!-- Modal de Notificação -->
     <div id="notify-backdrop"></div>
@@ -1430,6 +1468,9 @@ window.addEventListener('load', ()=>{
     // Detecta orientação inicial
     handleOrientationChange();
     
+    // Ativa fullscreen para esconder setas do Android
+    requestFullscreen();
+    
     // Notifica React Native que está pronto
     if (window.ReactNativeWebView) {
         window.ReactNativeWebView.postMessage(JSON.stringify({
@@ -1440,6 +1481,38 @@ window.addEventListener('load', ()=>{
     
     console.log('✅ Inicialização completa');
 });
+
+// Função para ativar fullscreen e esconder setas de navegação do Android
+function requestFullscreen() {
+    // Para React Native/Expo WebView - pede para esconder navigation bar
+    if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'hideNavigationBar'
+        }));
+    }
+    
+    const elem = document.documentElement;
+    
+    // Tenta diferentes métodos de fullscreen
+    if (elem.requestFullscreen) {
+        elem.requestFullscreen().catch(err => {
+            console.log('⚠️ Fullscreen não disponível:', err);
+        });
+    } else if (elem.webkitRequestFullscreen) {
+        elem.webkitRequestFullscreen();
+    } else if (elem.mozRequestFullScreen) {
+        elem.mozRequestFullScreen();
+    } else if (elem.msRequestFullscreen) {
+        elem.msRequestFullscreen();
+    }
+    
+    // Para manter fullscreen mesmo após interações
+    document.addEventListener('fullscreenchange', () => {
+        if (!document.fullscreenElement) {
+            requestAnimationFrame(() => requestFullscreen());
+        }
+    });
+}
 
 // Detector de mudança de orientação
 function handleOrientationChange() {

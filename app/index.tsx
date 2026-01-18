@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Asset } from 'expo-asset';
 import { CameraType, CameraView, useCameraPermissions } from 'expo-camera';
+import * as NavigationBar from 'expo-navigation-bar';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { DeviceMotion } from 'expo-sensors';
 import { useEffect, useRef, useState } from 'react';
@@ -48,6 +49,13 @@ export default function CameraScreen() {
   // Ocultar barra de status para tela cheia imersiva
   useEffect(() => {
     StatusBar.setHidden(true);
+    
+    // Esconde a barra de navegação do Android
+    if (NavigationBar.setVisibilityAsync) {
+      NavigationBar.setVisibilityAsync('hidden');
+      console.log('🎮 Barra de navegação do Android ocultada');
+    }
+    
     return () => StatusBar.setHidden(false);
   }, []);
 
@@ -181,6 +189,14 @@ export default function CameraScreen() {
       console.log('📨 Mensagem recebida do WebView:', data);
       
       switch (data.type) {
+        case 'hideNavigationBar':
+          // Esconde a barra de navegação do Android quando solicitado
+          if (NavigationBar.setVisibilityAsync) {
+            NavigationBar.setVisibilityAsync('hidden');
+            console.log('🎮 Barra de navegação ocultada via WebView');
+          }
+          break;
+          
         case 'zoom':
           // Converte 0-1 do slider para 0-1 da câmera
           const zoomValue = Math.max(0, Math.min(1, data.value));
